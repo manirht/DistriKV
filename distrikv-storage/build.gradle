@@ -1,0 +1,16 @@
+/*
+ * DistriKV :: Storage Engine
+ *
+ * Phase 1. A local, crash-safe, append-only (Bitcask-style) key-value engine.
+ *
+ * HARD RULE: this module has NO production dependencies. Not gRPC, not Raft, not
+ * even a logging framework until you have a reason you can defend. If you ever feel
+ * the need to import something from another DistriKV module here, a layer has leaked
+ * and the design needs fixing instead.
+ */
+
+dependencies {
+    // Property-based testing. Optional, but the "oracle test" exit criterion in
+    // ROADMAP.md Phase 1 is much easier to write with it.
+    testImplementation libs.jqwik
+}

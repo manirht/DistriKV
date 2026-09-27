@@ -1,0 +1,51 @@
+/*
+ * DistriKV :: Protobuf + gRPC stubs
+ *
+ * PHASE 2 — not in the build yet.
+ *
+ * To activate: uncomment include 'distrikv-proto' in settings.gradle, put your
+ * distrikv.proto under src/main/proto/, and run `./gradlew build`. Designing that .proto
+ * is milestone 2.1 and it's yours to write — the build plumbing below is not the interesting
+ * part, so it's done for you.
+ *
+ * Wire contract only: .proto files and the stubs generated from them. No hand-written logic
+ * lives here, which is what makes it safe for both the server and the Raft transport to
+ * depend on it.
+ *
+ * The protobuf plugin resolves protoc and the grpc codegen plugin as ordinary Maven artifacts
+ * with an OS/arch classifier — Gradle detects that itself, so there is no os-maven-plugin
+ * equivalent to configure. If a download fails, the classifier (osx-aarch_64 on Apple silicon)
+ * is the first thing to check.
+ */
+
+plugins {
+    alias libs.plugins.protobuf
+}
+
+dependencies {
+    api platform(libs.grpc.bom)
+    api libs.protobuf.java
+    api libs.grpc.protobuf
+    api libs.grpc.stub
+
+    // Generated gRPC code references javax.annotation.Generated, which left the JDK in 11.
+    compileOnly libs.tomcat.annotations.api
+}
+
+protobuf {
+    protoc {
+        artifact = libs.protoc.get().toString()
+    }
+    plugins {
+        grpc {
+            artifact = libs.grpc.protoc.gen.java.get().toString()
+        }
+    }
+    generateProtoTasks {
+        all().configureEach {
+            plugins {
+                grpc {}
+            }
+        }
+    }
+}

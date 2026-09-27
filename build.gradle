@@ -1,0 +1,52 @@
+plugins {
+    // Declared here so module build files can apply it without repeating a version.
+    // Only distrikv-proto actually applies it.
+    alias(libs.plugins.protobuf) apply false
+}
+
+description = 'A distributed, crash-safe key-value store built from scratch.'
+
+// Captured here because inside `subprojects { }` the delegate is the subproject, which has no
+// `libs` accessor of its own.
+def catalog = libs
+
+subprojects {
+    apply plugin: 'java-library'
+
+    group = 'io.distrikv'
+    version = '0.1.0-SNAPSHOT'
+
+    repositories {
+        mavenCentral()
+    }
+
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(25)
+        }
+    }
+
+    dependencies {
+        // Every module gets the test stack.
+        testImplementation platform(catalog.junit.bom)
+        testImplementation catalog.junit.jupiter
+        testImplementation catalog.assertj.core
+        testRuntimeOnly catalog.junit.platform.launcher
+    }
+
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+        // Turn on the warnings that catch real bugs, and take them seriously.
+        options.compilerArgs << '-Xlint:all'
+    }
+
+    tasks.withType(Test).configureEach {
+        useJUnitPlatform()
+        // Crash tests fork JVMs and kill them; don't let that confuse the reports.
+        testLogging {
+            showStackTraces = true
+            exceptionFormat = 'full'
+            events 'failed'
+        }
+    }
+}

@@ -1,0 +1,27 @@
+/*
+ * DistriKV :: Server
+ *
+ * PHASE 2 — not in the build yet. Uncomment include 'distrikv-server' in settings.gradle
+ * when you reach milestone 2.2.
+ *
+ * The node: gRPC service implementation, bootstrap, configuration, lifecycle.
+ *
+ * The service implementation here should be a thin adapter — proto in, engine call, proto out.
+ * If you find yourself writing storage logic in this module, it belongs in distrikv-storage;
+ * if you find yourself writing consensus logic, it belongs in distrikv-raft. Noticing that
+ * while you type it is much cheaper than noticing it in phase 5.
+ */
+
+dependencies {
+    implementation project(':distrikv-storage')
+    implementation project(':distrikv-proto')
+
+    implementation platform(libs.grpc.bom)
+    implementation libs.grpc.netty.shaded
+    implementation libs.grpc.services
+
+    implementation libs.slf4j.api
+    runtimeOnly libs.logback.classic
+
+    testImplementation libs.grpc.testing
+}

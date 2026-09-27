@@ -1,0 +1,27 @@
+/*
+ * DistriKV :: Raft
+ *
+ * PHASE 3 — not in the build yet. Uncomment include 'distrikv-raft' in settings.gradle
+ * when you reach milestone 3.1.
+ *
+ * Consensus. Depends on distrikv-storage (its state machine applies to the engine) and on
+ * distrikv-proto (the peer RPCs), but NOT on distrikv-server.
+ *
+ * One design constraint to hold from the first line of code: the consensus module must not
+ * touch the clock or the network directly. Both come in through injected interfaces
+ * (a Clock and a Transport), so your tests can drive time forward by hand and simulate
+ * partitions with no sockets involved. Milestone 3.9 is impossible to build if you skip this,
+ * and retrofitting it once the code exists means rewriting all of it. etcd's raft package is
+ * the reference for how clean this separation can be — worth a look before you start.
+ */
+
+dependencies {
+    implementation project(':distrikv-storage')
+    implementation project(':distrikv-proto')
+
+    implementation platform(libs.grpc.bom)
+    implementation libs.grpc.netty.shaded
+    implementation libs.slf4j.api
+
+    testImplementation libs.jqwik
+}

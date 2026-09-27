@@ -1,0 +1,27 @@
+target/
+*.class
+
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+
+# OS
+.DS_Store
+
+# Store data — never commit segment files
+data/
+*.data
+*.hint
+
+# Logs and benchmark output
+*.log
+logs/
+benchmark-results/

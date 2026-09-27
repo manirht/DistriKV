@@ -1,0 +1,39 @@
+[versions]
+# Test stack
+junit = "5.10.2"
+assertj = "3.25.3"
+jqwik = "1.8.4"
+
+# Phase 2+ : bump these when you activate those modules.
+# Run `./gradlew dependencyUpdates` (versions plugin) or check Maven Central for what's current.
+grpc = "1.64.0"
+protobuf = "3.25.3"
+slf4j = "2.0.13"
+logback = "1.5.6"
+
+[libraries]
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }
+jqwik = { module = "net.jqwik:jqwik", version.ref = "jqwik" }
+
+grpc-bom = { module = "io.grpc:grpc-bom", version.ref = "grpc" }
+grpc-protobuf = { module = "io.grpc:grpc-protobuf" }
+grpc-stub = { module = "io.grpc:grpc-stub" }
+grpc-netty-shaded = { module = "io.grpc:grpc-netty-shaded" }
+grpc-services = { module = "io.grpc:grpc-services" }
+grpc-testing = { module = "io.grpc:grpc-testing" }
+grpc-protoc-gen-java = { module = "io.grpc:protoc-gen-grpc-java", version.ref = "grpc" }
+
+protobuf-java = { module = "com.google.protobuf:protobuf-java", version.ref = "protobuf" }
+protoc = { module = "com.google.protobuf:protoc", version.ref = "protobuf" }
+
+slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+
+# Generated gRPC code references javax.annotation.Generated, which left the JDK in 11.
+tomcat-annotations-api = { module = "org.apache.tomcat:annotations-api", version = "6.0.53" }
+
+[plugins]
+protobuf = { id = "com.google.protobuf", version = "0.9.4" }

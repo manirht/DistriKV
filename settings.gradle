@@ -1,0 +1,15 @@
+plugins {
+    // Lets Gradle download the Java 25 toolchain instead of requiring a local install.
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.8.0'
+}
+
+rootProject.name = 'distrikv'
+
+// Phase 1. The only module active right now.
+include 'distrikv-storage'
+
+// Uncomment as you reach each phase. Keeping them out of the build until then
+// means a broken dependency in a future phase can never block Phase 1.
+// include 'distrikv-proto'
+// include 'distrikv-server'
+// include 'distrikv-raft'
