@@ -41,7 +41,28 @@ subprojects {
     }
 
     tasks.withType(Test).configureEach {
-        useJUnitPlatform()
+        useJUnitPlatform {
+            // Long-running measurements (the 1GB reopen timing) are tagged 'slow' and stay out
+            // of the normal build. Run them with: ./gradlew test -PincludeSlow
+            if (!project.hasProperty('includeSlow')) {
+                excludeTags 'slow'
+            }
+        }
+        // Tests run in a forked JVM, so -D on the Gradle command line does not reach them.
+        // Forward the knobs the slow tests read (oracle op count, concurrency duration, crash
+        // acknowledgement target, reopen size) so the exit criteria can be run at full scale:
+        //   ./gradlew test -PincludeSlow -Ddistrikv.oracle.ops=1000000
+        System.properties.each { name, value ->
+            if (name.toString().startsWith('distrikv.')) {
+                systemProperty name.toString(), value
+            }
+        }
+
+        // The 1GB reopen measurement holds ~1M keys in the KeyDir. At roughly 150 bytes per
+        // key (see docs/decisions/004) that is a few hundred MB of index, well above the
+        // default heap.
+        maxHeapSize = '2g'
+
         // Crash tests fork JVMs and kill them; don't let that confuse the reports.
         testLogging {
             showStackTraces = true

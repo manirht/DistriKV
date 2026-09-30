@@ -46,18 +46,24 @@ What this makes easy. What it makes hard. What I'll have to revisit, and when.
 ## Recorded so far
 
 - [001 — No Spring Boot in the core; plain Java modules](001-no-spring-boot.md)
+- [002 — On-disk record format](002-record-format.md)
+- [003 — Durability: sync policy, fsync scope, and the data-directory lock](003-durability.md)
+- [004 — API shape, error handling, and the store's honest capacity](004-api-and-capacity.md)
+- [005 — Recovery: torn tails, real corruption, and what `open` does about each](005-recovery-and-corruption.md)
+- [006 — Concurrency: one writer, N readers, and the gap between them](006-concurrency.md)
+- [007 — Phase 1 baseline measurements](007-phase1-baseline-measurements.md)
 
 ## Decisions ROADMAP.md asks you for
 
 Phase 1:
 
-- [ ] Record format — every field justified (including why `expiresAt` is reserved early)
-- [ ] Durability policy — what each `SyncPolicy` actually promises a caller
-- [ ] `Optional<byte[]>` vs `null` from `get` (`KeyValueStore` argues both sides; pick one)
-- [ ] Key/value size limits, and the RAM cost of the KeyDir at your target key count
-- [ ] What `open()` does when it finds corruption mid-segment
-- [ ] `putIfNewer` on an exact timestamp tie
-- [ ] Your concurrency model, and what a reader can observe mid-write
+- [x] Record format — every field justified (including why `expiresAt` is reserved early) → [002](002-record-format.md)
+- [x] Durability policy — what each `SyncPolicy` actually promises a caller → [003](003-durability.md)
+- [x] `Optional<byte[]>` vs `null` from `get` (`KeyValueStore` argues both sides; pick one) → [004](004-api-and-capacity.md)
+- [x] Key/value size limits, and the RAM cost of the KeyDir at your target key count → [004](004-api-and-capacity.md)
+- [x] What `open()` does when it finds corruption mid-segment → [005](005-recovery-and-corruption.md)
+- [x] `putIfNewer` on an exact timestamp tie → [002](002-record-format.md)
+- [x] Your concurrency model, and what a reader can observe mid-write → [006](006-concurrency.md)
 
 Phase 2:
 

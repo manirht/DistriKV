@@ -6,7 +6,15 @@ then chaos testing and benchmarks.
 
 No Raft library. No embedded storage engine. That's the point.
 
-**Status:** Phase 1 in progress — local storage engine.
+**Status:** Phase 1 complete — local storage engine. All exit criteria pass (one deliberate
+deviation on corruption handling, noted in [ROADMAP.md](ROADMAP.md#exit-criteria)). Phase 2 next.
+
+| | |
+|---|---|
+| Tests | 97, none skipped — 95 in the fast suite (~7s), 2 tagged `slow` |
+| 1GB reopen | 420 ms (1M keys, 17 segments, warm cache) |
+| Writes/s | ~460,000 under `NEVER` · ~270 under `EVERY_WRITE` (fsync-bound) |
+| Crash-tested | 100,000 acknowledged writes, SIGKILL, all recovered byte-for-byte |
 
 ---
 
@@ -19,29 +27,55 @@ No Raft library. No embedded storage engine. That's the point.
 ## Build
 
 ```bash
-mvn clean install
+java25 && ./gradlew build
 ```
 
-Requires **JDK 25** and Maven 3.9+.
+Gradle comes from the wrapper — nothing to install. The wrapper JVM needs **JDK 17+**, and the
+code compiles against a **Java 25** toolchain.
 
-Check that Maven is actually using it, not just your shell's `java`:
+Two independent JDKs are in play and it's worth knowing which is which:
+
+| | Which JDK | Set by |
+|---|---|---|
+| The JVM Gradle itself runs on | whatever `JAVA_HOME` points at (must be 17+) | your `java21` / `java25` shell shortcut |
+| The JDK that compiles the code | always 25, regardless of the above | `toolchain` in `build.gradle` |
+
+So `java21 && ./gradlew build` also works — Gradle still compiles with 25. What does *not* work
+is the default shell, which is JDK 11:
+
+```
+Gradle requires JVM 17 or later to run. Your build is currently configured to use JVM 11.
+```
+
+Run `java21` or `java25` first, or change the default in `~/.zshrc`.
+
+Gradle locates the toolchain via `org.gradle.java.installations.paths` in `gradle.properties`,
+which lists the Homebrew paths behind those shortcuts. On a machine without JDK 25 installed, the
+`foojay-resolver` plugin in `settings.gradle` downloads one instead.
+
+Check what Gradle can see:
 
 ```bash
-java25 && mvn -v      # the "Java version:" line must say 25
+./gradlew -q javaToolchains
 ```
-
-If `mvn -v` reports an older JDK, your `java25` shortcut is setting `PATH` but not `JAVA_HOME` —
-Maven reads `JAVA_HOME`, so it will happily compile with the wrong compiler and give you
-confusing `release 25 not supported` errors. Fix the shortcut to export both.
 
 **No Spring Boot.** See [docs/decisions/001-no-spring-boot.md](docs/decisions/001-no-spring-boot.md).
 
-Expect failures at first, and that's correct: `RecordCodecTest` has live assertions waiting for
-milestone 1.1, and the rest of Phase 1 is `@Disabled` stubs you enable as you implement each
-piece. Run just the one you're working on:
+Run just the suite you're working on:
 
 ```bash
-mvn -pl distrikv-storage test -Dtest=RecordCodecTest
+./gradlew :distrikv-storage:test --tests '*RecordCodecTest'
+```
+
+The long-running tests are tagged `slow` and excluded by default — the 1GB reopen measurement and
+the 100k-key round-trip. The scale knobs on the others default low so the suite stays fast; the
+Phase 1 exit criteria were verified at their full stated scale like this:
+
+```bash
+./gradlew :distrikv-storage:test -PincludeSlow \
+  -Ddistrikv.oracle.ops=1000000 \
+  -Ddistrikv.concurrency.seconds=60 \
+  -Ddistrikv.crash.acks=100000
 ```
 
 ## Architecture
@@ -73,5 +107,5 @@ has leaked and the design gets fixed rather than worked around.
 | `distrikv-server` | 2 | gRPC service impl, node bootstrap, config, lifecycle |
 | `distrikv-raft` | 3 | Role state machine, `RequestVote`, `AppendEntries`, commit/apply, snapshots |
 
-Only `distrikv-storage` is active in the parent `pom.xml`; uncomment the others as you reach
+Only `distrikv-storage` is active in `settings.gradle`; uncomment the others as you reach
 their phases.

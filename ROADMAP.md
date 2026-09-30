@@ -120,17 +120,40 @@ Questions I will ask you in review, so think about them now:
 
 ### Exit criteria — all of these must pass before Phase 2
 
-- [ ] `put`/`get`/`delete` round-trip for 100k random keys, values 1B–1MB.
-- [ ] **Crash test:** write 100k keys, `kill -9` the JVM mid-write, restart, every
+- [x] `put`/`get`/`delete` round-trip for 100k random keys, values 1B–1MB.
+      `BitcaskStoreTest.Scale.hundredThousandKeys` — sizes uniform in [1, 4096] plus 200 keys at
+      1B / 64KB / 256KB / 1MB. Drawing all 100k uniformly from 1B–1MB would be ~50GB and would
+      measure the disk, not the store; the distribution is stated in the test.
+- [x] **Crash test:** write 100k keys, `kill -9` the JVM mid-write, restart, every
       acknowledged key reads back correctly and the torn tail record is discarded cleanly.
-- [ ] **Oracle test:** run 1M random ops against both your store and a `HashMap`, assert they
-      agree at every step. (This finds bugs no hand-written test will.)
-- [ ] Corrupt a byte in the middle of a data file → the affected record is detected via CRC and
-      rejected, and the store still opens.
-- [ ] Segment rollover works: a store with 10 segments reads keys from all of them.
-- [ ] 4 reader threads + 1 writer for 60s → no exceptions, no torn reads, no lost writes.
-- [ ] Reopening a 1GB store takes a time you've measured and written down. (You'll make this
-      fast in Phase 4 with hint files. Knowing the "before" number is the point.)
+      `CrashRecoveryTest.HardKill` + `CrashWriter`. Verified at the full 100,000 acknowledged
+      writes (6m 9s, fsync-bound). Torn-tail discarding is asserted separately and
+      deterministically in `CrashRecoveryTest.TornTail`, because a kill only *sometimes* lands
+      mid-record and a probabilistic assertion would be flaky.
+- [x] **Oracle test:** run 1M random ops against both your store and a `HashMap`, assert they
+      agree at every step. `BitcaskStoreTest.Oracle`, 64-key space so overwrites and deletes of
+      live keys dominate. Run at the full 1M with `-Ddistrikv.oracle.ops=1000000`; the seed is
+      printed on failure.
+- [~] Corrupt a byte in the middle of a data file → the affected record is detected via CRC and
+      rejected, **and the store still opens.** *Deliberate deviation:* detection is implemented
+      and tested (`CrashRecoveryTest.Corruption`), but `open` **throws** instead of opening.
+      Skipping a bad record silently reverts that key to an older value — data loss nothing
+      reports — which is what `LogReplayer`'s own javadoc says must not happen ("Skipping it
+      silently is the worst possible response... Fail loudly"). The criterion and that javadoc
+      contradict each other; this follows the javadoc. Reasoning and the rejected alternatives
+      are in [docs/decisions/005](docs/decisions/005-recovery-and-corruption.md). Revisit if a
+      degraded read-only mode is wanted — the hook is `BitcaskStore.open`.
+- [x] Segment rollover works: a store with 10 segments reads keys from all of them.
+      `BitcaskStoreTest.Rollover` — spans >10 segments, and also asserts no segment ever exceeds
+      `maxSegmentBytes`.
+- [x] 4 reader threads + 1 writer for 60s → no exceptions, no torn reads, no lost writes.
+      `BitcaskStoreTest.Concurrency`, run at the full 60s with
+      `-Ddistrikv.concurrency.seconds=60`. Values are self-verifying (every byte equals the
+      value's length) so a spliced read is detectable rather than merely "no exception thrown".
+- [x] Reopening a 1GB store takes a time you've measured and written down.
+      **420 ms** for 1GB / 1M keys / 17 segments, warm page cache.
+      [docs/decisions/007](docs/decisions/007-phase1-baseline-measurements.md) records it along
+      with why the warm number flatters the decode path and what a cold reopen would cost.
 
 ### Concepts to actually learn here
 
@@ -186,7 +209,7 @@ deliberately rather than by accident.
 
 ### Exit criteria
 
-- [ ] `mvn clean install` generates stubs and the server starts on a configurable port.
+- [ ] `./gradlew build` generates stubs and the server starts on a configurable port.
 - [ ] Round-trip over the network: put then get from a separate JVM.
 - [ ] Ungraceful client disconnect mid-request leaves no leaked threads or file handles.
 - [ ] 50 concurrent clients × 10k ops each → zero errors, zero lost writes, and you have
@@ -379,7 +402,10 @@ Roughly in order of value-per-unit-effort:
 DistriKV/
 ├── ROADMAP.md              this file
 ├── LEARNING.md             what to read, per phase
-├── pom.xml                 parent (Java 21, dependency management)
+├── settings.gradle         which modules are in the build (phase-gated)
+├── build.gradle            shared config for every module (Java 25 toolchain, test stack)
+├── gradle/libs.versions.toml   one place for every dependency version
+├── gradlew                 the wrapper — no local Gradle install needed
 ├── distrikv-storage/       Phase 1 — the engine. No network deps. Ever.
 ├── distrikv-proto/         Phase 2 — .proto files, generated stubs
 ├── distrikv-server/        Phase 2 — gRPC service, node bootstrap
@@ -396,7 +422,8 @@ classes — if it ever needs to, a layer has leaked and we fix the design.
 
 ```bash
 cd ~/personal/DistriKV
-mvn clean install          # should pass with all Phase 1 tests failing/disabled
+java25                     # or java21 — Gradle needs JVM 17+, compiles with 25 either way
+./gradlew build            # RecordCodecTest fails, the rest of Phase 1 is @Disabled. Correct.
 ```
 
 Then say: **"give me the Phase 1.1 spec"** and we start.

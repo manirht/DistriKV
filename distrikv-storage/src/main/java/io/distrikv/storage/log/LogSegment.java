@@ -47,12 +47,12 @@ public interface LogSegment extends Closeable {
 
     /** Creates a new, empty, writable segment in {@code dir}. Fails if the file exists. */
     static LogSegment createActive(Path dir, int segmentId) {
-        throw new UnsupportedOperationException("TODO milestone 1.2 — createActive");
+        return FileLogSegment.createActive(dir, segmentId);
     }
 
     /** Opens an existing segment read-only. */
     static LogSegment openReadOnly(Path file) {
-        throw new UnsupportedOperationException("TODO milestone 1.2 — openReadOnly");
+        return FileLogSegment.openReadOnly(file);
     }
 
     /** {@code 000042.data} for id 42. */
@@ -60,13 +60,45 @@ public interface LogSegment extends Closeable {
         return String.format("%06d.data", segmentId);
     }
 
+    /** Matches what {@link #fileNameFor} produces: at least six digits, then {@code .data}. */
+    java.util.regex.Pattern FILE_NAME_PATTERN = java.util.regex.Pattern.compile("^(\\d{6,})\\.data$");
+
+    /**
+     * Whether {@code file} is named like one of our segments.
+     *
+     * <p>Lets recovery filter a directory that also holds a {@code LOCK} file today and hint
+     * files from milestone 4.3, without catching an exception per entry.
+     */
+    static boolean isSegmentFile(Path file) {
+        Path fileName = file.getFileName();
+        return fileName != null && FILE_NAME_PATTERN.matcher(fileName.toString()).matches();
+    }
+
     /**
      * Parses the segment id back out of a file name.
+     *
+     * <p>Deliberately strict: only names this class could have produced are accepted, so a
+     * hand-created {@code 1.data} or a leftover {@code 0001.hint} is rejected rather than
+     * half-understood. Recovery uses this to decide which files in the data directory are its
+     * own, and a loose match there means replaying something that isn't a segment.
      *
      * @throws IllegalArgumentException if the name isn't a segment file
      */
     static int segmentIdFrom(Path file) {
-        throw new UnsupportedOperationException("TODO milestone 1.2 — segmentIdFrom");
+        Path fileName = file.getFileName();
+        if (fileName == null) {
+            throw new IllegalArgumentException("not a segment file: " + file);
+        }
+        java.util.regex.Matcher matcher = FILE_NAME_PATTERN.matcher(fileName.toString());
+        if (!matcher.matches()) {
+            throw new IllegalArgumentException(
+                    "not a segment file name: '" + fileName + "' (expected e.g. 000042.data)");
+        }
+        long id = Long.parseLong(matcher.group(1));
+        if (id > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException("segment id out of range: " + fileName);
+        }
+        return (int) id;
     }
 
     int id();

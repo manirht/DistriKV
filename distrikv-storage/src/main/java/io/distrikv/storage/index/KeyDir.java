@@ -41,9 +41,15 @@ import java.util.Set;
  */
 public interface KeyDir {
 
-    /** Creates the standard single-threaded implementation. */
+    /**
+     * Creates the standard single-threaded implementation.
+     *
+     * <p>Not thread-safe; callers serialise access themselves. {@code BitcaskStore} does it with
+     * a read/write lock — see {@code docs/decisions/006} for why a concurrent map here would be
+     * the wrong answer to the right question.
+     */
     static KeyDir create() {
-        throw new UnsupportedOperationException("TODO milestone 1.3 — implement HashMapKeyDir");
+        return new HashMapKeyDir();
     }
 
     /** The current location for {@code key}, or {@code null} if the store has no live value. */

@@ -274,5 +274,168 @@ class RecordCodecTest {
             assertThatThrownBy(() -> RecordCodec.decode(encoded))
                     .isInstanceOf(CorruptRecordException.class);
         }
+
+        @Test
+        @DisplayName("swapped length fields are caught by the CRC, not just by bounds")
+        void inBoundsButWrongLengths() {
+            // key=3B, value=5B. Swapping the two length fields keeps the total at 37, so every
+            // bounds check still passes and only the checksum can catch it. That's the test that
+            // proves the CRC really covers the length fields and not just the payload.
+            ByteBuffer encoded = RecordCodec.encode(
+                    Record.value(Key.ofUtf8("key"), bytes("value"), TS));
+
+            encoded.putInt(RecordHeader.KEY_LEN_OFFSET, 5);
+            encoded.putInt(RecordHeader.VALUE_LEN_OFFSET, 3);
+
+            assertThatThrownBy(() -> RecordCodec.decode(encoded))
+                    .isInstanceOf(CorruptRecordException.class);
+        }
+
+        @Test
+        @DisplayName("an unrecognised flag bit is rejected rather than ignored")
+        void unknownFlagBit() {
+            // A CRC-valid record with a flag we don't know means a newer writer produced it.
+            // Ignoring the bit risks serving a value that writer considered dead, so decode
+            // refuses. Recompute the CRC so this tests the flag check and not the checksum.
+            ByteBuffer encoded = RecordCodec.encode(
+                    Record.value(Key.ofUtf8("key"), bytes("value"), TS));
+            encoded.put(RecordHeader.FLAGS_OFFSET, (byte) 0x02);
+            recomputeChecksum(encoded);
+
+            assertThatThrownBy(() -> RecordCodec.decode(encoded))
+                    .isInstanceOf(CorruptRecordException.class)
+                    .hasMessageContaining("flag");
+        }
+
+        @Test
+        @DisplayName("a tombstone found carrying a value on disk is rejected")
+        void tombstoneWithValue() {
+            // Not reachable through Record's constructor, which forbids it — but a corrupt or
+            // hostile file can hold exactly these bytes, and decode must not hand back a
+            // Record that violates its own invariants.
+            ByteBuffer encoded = RecordCodec.encode(
+                    Record.value(Key.ofUtf8("key"), bytes("value"), TS));
+            encoded.put(RecordHeader.FLAGS_OFFSET, RecordHeader.FLAG_TOMBSTONE);
+            recomputeChecksum(encoded);
+
+            assertThatThrownBy(() -> RecordCodec.decode(encoded))
+                    .isInstanceOf(CorruptRecordException.class)
+                    .hasMessageContaining("tombstone");
+        }
+
+        @Test
+        @DisplayName("a failed decode leaves the buffer's position where it was")
+        void failureDoesNotConsume() {
+            // LogReplayer reports the offset of a bad record, so it needs the position it passed
+            // in to still be intact after the exception.
+            ByteBuffer full = RecordCodec.encode(
+                    Record.value(Key.ofUtf8("key"), bytes("a-long-value-here"), TS));
+            ByteBuffer torn = ByteBuffer.allocate(full.remaining() - 5);
+            full.limit(torn.capacity());
+            torn.put(full).flip();
+
+            assertThatThrownBy(() -> RecordCodec.decode(torn))
+                    .isInstanceOf(CorruptRecordException.class);
+            assertThat(torn.position()).isZero();
+        }
+    }
+
+    /**
+     * Cases the given suite doesn't cover, added per its own instruction to extend it. Each one
+     * exists because some later milestone depends on the behaviour: 1.2's read path decodes from
+     * the middle of a buffer, 1.5's replayer decodes from a buffer holding many records, and
+     * both would otherwise discover these properties by failing.
+     */
+    @Nested
+    @DisplayName("buffer handling")
+    class BufferHandling {
+
+        @Test
+        @DisplayName("decodes a record sitting at a non-zero offset in a larger buffer")
+        void decodeAtOffset() {
+            // LogSegment.read hands over a buffer whose record does not start at index 0 once
+            // replay is reading a whole chunk at a time.
+            Record original = Record.value(Key.ofUtf8("offset-key"), bytes("offset-value"), TS);
+            ByteBuffer encoded = RecordCodec.encode(original);
+            int padding = 7;
+
+            ByteBuffer padded = ByteBuffer.allocate(padding + encoded.remaining() + padding);
+            padded.position(padding).put(encoded);
+            padded.position(padding).limit(padded.capacity() - padding);
+
+            assertThat(RecordCodec.decode(padded)).isEqualTo(original);
+        }
+
+        @Test
+        @DisplayName("stops exactly at the record's end, leaving trailing bytes alone")
+        void doesNotOverrunIntoTrailingBytes() {
+            Record original = Record.value(Key.ofUtf8("k"), bytes("v"), TS);
+            ByteBuffer encoded = RecordCodec.encode(original);
+            int recordLength = encoded.remaining();
+
+            ByteBuffer withGarbage = ByteBuffer.allocate(recordLength + 11);
+            withGarbage.put(encoded);
+            for (int i = 0; i < 11; i++) {
+                withGarbage.put((byte) 0xAB);
+            }
+            withGarbage.flip();
+
+            assertThat(RecordCodec.decode(withGarbage)).isEqualTo(original);
+            assertThat(withGarbage.position()).isEqualTo(recordLength);
+            assertThat(withGarbage.remaining()).isEqualTo(11);
+        }
+
+        @Test
+        @DisplayName("a little-endian buffer still decodes correctly")
+        void ignoresCallerByteOrder() {
+            // The format is big-endian regardless of what order the caller's buffer happens to
+            // be in. Without decode forcing it, this returns silent garbage rather than failing.
+            Record original = Record.value(Key.ofUtf8("endian"), bytes("test"), TS);
+            ByteBuffer encoded = RecordCodec.encode(original);
+
+            ByteBuffer little = ByteBuffer.allocate(encoded.remaining())
+                    .order(java.nio.ByteOrder.LITTLE_ENDIAN);
+            little.put(encoded).flip();
+
+            assertThat(RecordCodec.decode(little)).isEqualTo(original);
+        }
+
+        @Test
+        @DisplayName("encodedLength of a tombstone is header plus key only")
+        void tombstoneLength() {
+            Record tombstone = Record.tombstone(Key.ofUtf8("gone"), TS);
+
+            assertThat(RecordCodec.encodedLength(tombstone))
+                    .isEqualTo(RecordHeader.HEADER_BYTES + 4)
+                    .isEqualTo(RecordCodec.encode(tombstone).remaining());
+        }
+
+        @Test
+        @DisplayName("a key at the default 4KB limit round-trips")
+        void maxSizedKey() {
+            byte[] bigKey = new byte[4 * 1024];
+            for (int i = 0; i < bigKey.length; i++) {
+                bigKey[i] = (byte) i;
+            }
+
+            Record original = Record.value(Key.of(bigKey), bytes("v"), TS);
+            Record decoded = RecordCodec.decode(RecordCodec.encode(original));
+
+            assertThat(decoded.key()).isEqualTo(Key.of(bigKey));
+            assertThat(decoded.key().length()).isEqualTo(4096);
+        }
+    }
+
+    /**
+     * Rewrites the CRC field to match the current contents, so a test can plant a
+     * <em>semantically</em> invalid record that is nonetheless checksum-clean — the only way to
+     * reach decode's post-checksum validation.
+     */
+    private static void recomputeChecksum(ByteBuffer record) {
+        java.util.zip.CRC32 crc32 = new java.util.zip.CRC32();
+        ByteBuffer covered = record.duplicate();
+        covered.limit(record.limit()).position(RecordHeader.CRC_COVERED_FROM);
+        crc32.update(covered);
+        record.putInt(RecordHeader.CRC_OFFSET, (int) crc32.getValue());
     }
 }
